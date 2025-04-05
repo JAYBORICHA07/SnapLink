@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -18,6 +18,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Switch } from "@/components/ui/switch"
+import { useBookmarkStore, useUserStore, useTeamStore } from "@/store"
 
 const formSchema = z.object({
   url: z.string().url({ message: "Please enter a valid URL" }),
@@ -25,6 +27,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   category: z.string().min(1, { message: "Please select a category" }),
   isPublic: z.boolean().default(false),
+  teamId: z.string().optional(),
 })
 
 export default function AddBookmarkPage() {
@@ -34,6 +37,14 @@ export default function AddBookmarkPage() {
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState("")
   const [aiSummary, setAiSummary] = useState("")
+  
+  const { addBookmark, loading, error } = useBookmarkStore()
+  const { user } = useUserStore()
+  const { teams, fetchTeams } = useTeamStore()
+
+  useEffect(() => {
+    fetchTeams()
+  }, [fetchTeams])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -43,6 +54,7 @@ export default function AddBookmarkPage() {
       description: "",
       category: "",
       isPublic: false,
+      teamId: "",
     },
   })
 
@@ -98,19 +110,48 @@ export default function AddBookmarkPage() {
   }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // Simulate saving bookmark
-    console.log({
-      ...values,
-      tags,
-      aiSummary,
-    })
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Authentication required",
+        description: "Please sign in to add a bookmark.",
+      })
+      return
+    }
+    
+    try {
+      // Prepare bookmark data
+      const bookmarkData = {
+        ...values,
+        tags,
+        aiSummary,
+        userId: user.uid,
+        isPublic: values.isPublic,
+        category: values.category,
+        teamId: values.teamId === "none" ? undefined : values.teamId,
+      }
+      
+      // Add bookmark to the database
+      await addBookmark(bookmarkData)
+      
+      toast({
+        title: "Bookmark added",
+        description: "Your bookmark has been added successfully.",
+      })
 
-    toast({
-      title: "Bookmark added",
-      description: "Your bookmark has been added successfully.",
-    })
-
-    router.push("/dashboard")
+      if (values.teamId) {
+        router.push(`/dashboard/teams/${values.teamId}`)
+      } else {
+        router.push("/dashboard")
+      }
+    } catch (error) {
+      console.error("Error adding bookmark:", error)
+      toast({
+        variant: "destructive",
+        title: "Failed to add bookmark",
+        description: "There was an error adding your bookmark. Please try again.",
+      })
+    }
   }
 
   return (
@@ -264,12 +305,68 @@ export default function AddBookmarkPage() {
                   )}
                 />
 
-                <div className="flex justify-end gap-4">
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">Save Bookmark</Button>
-                </div>
+                {teams.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="teamId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Team (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a team" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Personal Bookmark</SelectItem>
+                            {teams.map((team) => (
+                              <SelectItem key={team.id} value={team.id}>
+                                {team.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          If selected, this bookmark will be shared with the team
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="isPublic"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                      <div className="space-y-0.5">
+                        <FormLabel className="text-base">Make Public</FormLabel>
+                        <FormDescription>
+                          Public bookmarks can be viewed by anyone with the link. Private bookmarks are only visible to you.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Add Bookmark'
+                  )}
+                </Button>
               </form>
             </Form>
           </div>
@@ -282,21 +379,21 @@ export default function AddBookmarkPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <h3 className="font-medium mb-1">AI Features</h3>
+                  <h3 className="font-medium mb-1">Organize with Tags</h3>
                   <p className="text-sm text-muted-foreground">
-                    Use the AI button to automatically generate a summary and suggested tags for your bookmark.
+                    Add multiple tags to categorize your bookmarks and make them easier to find later.
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-medium mb-1">Organizing</h3>
+                  <h3 className="font-medium mb-1">Team Collaboration</h3>
                   <p className="text-sm text-muted-foreground">
-                    Add relevant tags and select a category to make your bookmarks easier to find later.
+                    Assign bookmarks to teams to share valuable resources with your colleagues.
                   </p>
                 </div>
                 <div>
-                  <h3 className="font-medium mb-1">Sharing</h3>
+                  <h3 className="font-medium mb-1">AI Summary</h3>
                   <p className="text-sm text-muted-foreground">
-                    You can share bookmarks with your team after saving them by visiting the bookmark details.
+                    Let our AI generate a summary of the page content to help you remember why you saved it.
                   </p>
                 </div>
               </CardContent>

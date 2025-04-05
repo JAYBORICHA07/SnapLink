@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,37 +18,19 @@ import { useToast } from "@/components/ui/use-toast"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Users, PlusCircle, Search, UserPlus, Settings, BookmarkIcon } from "lucide-react"
+import { Users, PlusCircle, Search, Settings, BookmarkIcon, Loader2, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-
-// Mock data for teams
-const mockTeams = [
-  {
-    id: "1",
-    name: "Design Team",
-    description: "Team for design resources and inspiration",
-    memberCount: 5,
-    bookmarkCount: 27,
-    createdAt: new Date("2023-05-10"),
-  },
-  {
-    id: "2",
-    name: "Development",
-    description: "Web development resources and documentation",
-    memberCount: 8,
-    bookmarkCount: 42,
-    createdAt: new Date("2023-04-15"),
-  },
-  {
-    id: "3",
-    name: "Marketing",
-    description: "Marketing strategies and tools",
-    memberCount: 4,
-    bookmarkCount: 18,
-    createdAt: new Date("2023-06-20"),
-  },
-]
+import { useTeamStore, useUserStore } from "@/store"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogClose,
+} from "@/components/ui/dialog"
 
 const formSchema = z.object({
   name: z.string().min(1, { message: "Team name is required" }),
@@ -58,6 +40,11 @@ const formSchema = z.object({
 export default function TeamsPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const [deleteTeamId, setDeleteTeamId] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const { user } = useUserStore()
+  const { teams, loading, error, fetchTeams, createTeam, deleteTeam } = useTeamStore()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -67,22 +54,67 @@ export default function TeamsPage() {
     },
   })
 
-  const filteredTeams = mockTeams.filter(
+  useEffect(() => {
+    fetchTeams()
+  }, [fetchTeams])
+
+  const filteredTeams = teams.filter(
     (team) =>
       team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (team.description?.toLowerCase().includes(searchQuery.toLowerCase())),
   )
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // Simulate creating a team
-    console.log(values)
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    try {
+      await createTeam({
+        name: values.name,
+        description: values.description,
+        ownerId: user?.uid || '',
+      })
 
-    toast({
-      title: "Team created",
-      description: `${values.name} has been created successfully.`,
-    })
+      toast({
+        title: "Team created",
+        description: `${values.name} has been created successfully.`,
+      })
 
-    form.reset()
+      form.reset()
+      setPopoverOpen(false)
+    } catch (error) {
+      console.error("Error creating team:", error)
+      toast({
+        variant: "destructive",
+        title: "Failed to create team",
+        description: "There was an error creating your team. Please try again.",
+      })
+    }
+  }
+
+  const handleDeleteTeam = async () => {
+    if (!deleteTeamId) return
+
+    setIsDeleting(true)
+    try {
+      await deleteTeam(deleteTeamId)
+      
+      toast({
+        title: "Team deleted",
+        description: "The team has been deleted successfully.",
+      })
+    } catch (error) {
+      console.error("Error deleting team:", error)
+      toast({
+        variant: "destructive",
+        title: "Failed to delete team",
+        description: "There was an error deleting the team. Please try again.",
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteTeamId(null)
+    }
+  }
+
+  const getMemberCount = (team: typeof teams[0]) => {
+    return team.members.length
   }
 
   return (
@@ -93,7 +125,7 @@ export default function TeamsPage() {
             <h1 className="text-3xl font-bold tracking-tight">Teams</h1>
             <p className="text-muted-foreground mt-1">Manage your teams and collaborate on bookmarks</p>
           </div>
-          <Popover>
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
               <Button>
                 <PlusCircle className="mr-2 h-4 w-4" />
@@ -139,7 +171,10 @@ export default function TeamsPage() {
                       )}
                     />
                     <div className="flex justify-end gap-2">
-                      <Button type="button" variant="outline" onClick={() => form.reset()}>
+                      <Button type="button" variant="outline" onClick={() => {
+                        form.reset()
+                        setPopoverOpen(false)
+                      }}>
                         Cancel
                       </Button>
                       <Button type="submit">Create Team</Button>
@@ -163,14 +198,23 @@ export default function TeamsPage() {
           </div>
         </div>
 
-        {filteredTeams.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center items-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <span className="ml-2 text-muted-foreground">Loading teams...</span>
+          </div>
+        ) : filteredTeams.length === 0 ? (
           <div className="text-center py-12">
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-4">
               <Users className="h-6 w-6 text-muted-foreground" />
             </div>
             <h2 className="text-lg font-medium mb-2">No teams found</h2>
             <p className="text-muted-foreground mb-4">
-              {searchQuery ? "Try a different search term." : "Create your first team to start collaborating."}
+              {searchQuery 
+                ? "Try a different search term." 
+                : teams.length === 0 
+                  ? "Create your first team to start collaborating." 
+                  : "No teams match your search."}
             </p>
           </div>
         ) : (
@@ -185,11 +229,11 @@ export default function TeamsPage() {
                   <div className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4 text-muted-foreground" />
-                      <span>{team.memberCount} members</span>
+                      <span>{getMemberCount(team)} members</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <BookmarkIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{team.bookmarkCount} bookmarks</span>
+                      <span>Shared bookmarks</span>
                     </div>
                   </div>
                 </CardContent>
@@ -198,20 +242,54 @@ export default function TeamsPage() {
                     <Link href={`/dashboard/teams/${team.id}`}>View Team</Link>
                   </Button>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="icon">
-                      <UserPlus className="h-4 w-4" />
-                      <span className="sr-only">Add Member</span>
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/dashboard/teams/${team.id}`}>
+                        <Settings className="h-4 w-4" />
+                        <span className="sr-only">Team Settings</span>
+                      </Link>
                     </Button>
-                    <Button variant="ghost" size="icon">
-                      <Settings className="h-4 w-4" />
-                      <span className="sr-only">Team Settings</span>
-                    </Button>
+                    {team.ownerId === user?.uid && (
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteTeamId(team.id)}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete Team</span>
+                      </Button>
+                    )}
                   </div>
                 </CardFooter>
               </Card>
             ))}
           </div>
         )}
+
+        <Dialog open={!!deleteTeamId} onOpenChange={(open: boolean) => !open && setDeleteTeamId(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Team</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this team? This action cannot be undone and will remove all team members and shared bookmarks.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <Button 
+                onClick={handleDeleteTeam} 
+                variant="destructive"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete Team'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )

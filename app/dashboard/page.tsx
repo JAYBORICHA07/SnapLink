@@ -1,112 +1,44 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import DashboardLayout from "@/components/dashboard-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BookmarkCard } from "@/components/bookmark-card"
-import { PlusCircle, Grid, List, Search, SlidersHorizontal } from "lucide-react"
+import { PlusCircle, Grid, List, Search, SlidersHorizontal, Loader2 } from "lucide-react"
 import Link from "next/link"
-
-// Mock data for bookmarks
-const mockBookmarks = [
-  {
-    id: "1",
-    title: "Next.js Documentation",
-    url: "https://nextjs.org/docs",
-    description: "The official Next.js documentation with guides and API reference.",
-    tags: ["nextjs", "react", "documentation"],
-    aiSummary:
-      "Comprehensive guide to Next.js features including pages, routing, data fetching, and deployment options.",
-    favicon: "https://nextjs.org/favicon.ico",
-    createdAt: new Date("2023-05-15"),
-    updatedAt: new Date("2023-05-15"),
-    userId: "user1",
-    isPublic: true,
-  },
-  {
-    id: "2",
-    title: "Tailwind CSS Documentation",
-    url: "https://tailwindcss.com/docs",
-    description: "The official Tailwind CSS documentation.",
-    tags: ["tailwind", "css", "documentation"],
-    aiSummary:
-      "Utility-first CSS framework documentation with class references, customization guides, and component examples.",
-    favicon: "https://tailwindcss.com/favicon.ico",
-    createdAt: new Date("2023-06-10"),
-    updatedAt: new Date("2023-06-10"),
-    userId: "user1",
-    isPublic: true,
-  },
-  {
-    id: "3",
-    title: "React Documentation",
-    url: "https://react.dev",
-    description: "The official React documentation.",
-    tags: ["react", "javascript", "documentation"],
-    aiSummary:
-      "Learn React from the official documentation covering components, hooks, state management, and advanced patterns.",
-    favicon: "https://react.dev/favicon.ico",
-    createdAt: new Date("2023-04-20"),
-    updatedAt: new Date("2023-04-20"),
-    userId: "user1",
-    isPublic: true,
-  },
-  {
-    id: "4",
-    title: "TypeScript Documentation",
-    url: "https://www.typescriptlang.org/docs/",
-    description: "The official TypeScript documentation.",
-    tags: ["typescript", "javascript", "documentation"],
-    aiSummary:
-      "TypeScript language documentation with type system explanations, interfaces, generics, and migration guides from JavaScript.",
-    favicon: "https://www.typescriptlang.org/favicon.ico",
-    createdAt: new Date("2023-07-05"),
-    updatedAt: new Date("2023-07-05"),
-    userId: "user1",
-    isPublic: true,
-  },
-  {
-    id: "5",
-    title: "Vercel Platform Documentation",
-    url: "https://vercel.com/docs",
-    description: "Documentation for the Vercel platform.",
-    tags: ["vercel", "deployment", "documentation"],
-    aiSummary:
-      "Vercel platform documentation covering deployments, serverless functions, environment variables, and integrations.",
-    favicon: "https://vercel.com/favicon.ico",
-    createdAt: new Date("2023-08-12"),
-    updatedAt: new Date("2023-08-12"),
-    userId: "user1",
-    isPublic: true,
-  },
-  {
-    id: "6",
-    title: "Firebase Documentation",
-    url: "https://firebase.google.com/docs",
-    description: "Documentation for Firebase services.",
-    tags: ["firebase", "database", "authentication"],
-    aiSummary:
-      "Firebase platform documentation covering Firestore, Authentication, Storage, and other Google Cloud services.",
-    favicon: "https://firebase.google.com/favicon.ico",
-    createdAt: new Date("2023-09-01"),
-    updatedAt: new Date("2023-09-01"),
-    userId: "user1",
-    isPublic: true,
-  },
-]
+import { useBookmarkStore } from "@/store"
+import { useAuth } from "@/components/auth-provider"
 
 export default function DashboardPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [searchQuery, setSearchQuery] = useState("")
+  const [favorites, setFavorites] = useState<string[]>([])
+  
+  const { bookmarks, loading, error, fetchBookmarks } = useBookmarkStore()
+  const { user } = useAuth()
 
-  const filteredBookmarks = mockBookmarks.filter(
+  useEffect(() => {
+    if (user) {
+      fetchBookmarks()
+    }
+  }, [user, fetchBookmarks])
+
+  const filteredBookmarks = bookmarks.filter(
     (bookmark) =>
       bookmark.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       bookmark.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (bookmark.description?.toLowerCase().includes(searchQuery.toLowerCase())),
   )
+
+  const recentBookmarks = [...bookmarks]
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 10)
+
+  const favoriteBookmarks = bookmarks.filter(bookmark => favorites.includes(bookmark.id))
+  
+  const sharedBookmarks = bookmarks.filter(bookmark => bookmark.isPublic)
 
   return (
     <DashboardLayout>
@@ -168,45 +100,128 @@ export default function DashboardPage() {
             <TabsTrigger value="shared">Shared</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="all" className="space-y-4">
-            {filteredBookmarks.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">No bookmarks found. Try a different search term.</p>
-              </div>
-            ) : (
-              <div
-                className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}
-              >
-                {filteredBookmarks.map((bookmark) => (
-                  <BookmarkCard key={bookmark.id} bookmark={bookmark} viewMode={viewMode} />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="recent" className="space-y-4">
-            <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {filteredBookmarks.slice(0, 3).map((bookmark) => (
-                <BookmarkCard key={bookmark.id} bookmark={bookmark} viewMode={viewMode} />
-              ))}
+          {loading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading bookmarks...</span>
             </div>
-          </TabsContent>
+          ) : (
+            <>
+              <TabsContent value="all" className="space-y-4">
+                {filteredBookmarks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">
+                      {searchQuery 
+                        ? "No bookmarks found. Try a different search term." 
+                        : "You haven't added any bookmarks yet. Click the 'Add Bookmark' button to get started."}
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}
+                  >
+                    {filteredBookmarks.map((bookmark) => (
+                      <BookmarkCard 
+                        key={bookmark.id} 
+                        bookmark={bookmark} 
+                        viewMode={viewMode} 
+                        onToggleFavorite={(id) => {
+                          if (favorites.includes(id)) {
+                            setFavorites(favorites.filter(favId => favId !== id))
+                          } else {
+                            setFavorites([...favorites, id])
+                          }
+                        }}
+                        isFavorite={favorites.includes(bookmark.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
 
-          <TabsContent value="favorites" className="space-y-4">
-            <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {filteredBookmarks.slice(1, 4).map((bookmark) => (
-                <BookmarkCard key={bookmark.id} bookmark={bookmark} viewMode={viewMode} />
-              ))}
-            </div>
-          </TabsContent>
+              <TabsContent value="recent" className="space-y-4">
+                {recentBookmarks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">No recent bookmarks found.</p>
+                  </div>
+                ) : (
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
+                    {recentBookmarks.map((bookmark) => (
+                      <BookmarkCard 
+                        key={bookmark.id} 
+                        bookmark={bookmark} 
+                        viewMode={viewMode} 
+                        onToggleFavorite={(id) => {
+                          if (favorites.includes(id)) {
+                            setFavorites(favorites.filter(favId => favId !== id))
+                          } else {
+                            setFavorites([...favorites, id])
+                          }
+                        }}
+                        isFavorite={favorites.includes(bookmark.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
 
-          <TabsContent value="shared" className="space-y-4">
-            <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {filteredBookmarks.slice(3, 6).map((bookmark) => (
-                <BookmarkCard key={bookmark.id} bookmark={bookmark} viewMode={viewMode} />
-              ))}
-            </div>
-          </TabsContent>
+              <TabsContent value="favorites" className="space-y-4">
+                {favoriteBookmarks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">
+                      You haven't favorited any bookmarks yet. Click the heart icon on a bookmark to add it to favorites.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
+                    {favoriteBookmarks.map((bookmark) => (
+                      <BookmarkCard 
+                        key={bookmark.id} 
+                        bookmark={bookmark} 
+                        viewMode={viewMode} 
+                        onToggleFavorite={(id) => {
+                          if (favorites.includes(id)) {
+                            setFavorites(favorites.filter(favId => favId !== id))
+                          } else {
+                            setFavorites([...favorites, id])
+                          }
+                        }}
+                        isFavorite={favorites.includes(bookmark.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="shared" className="space-y-4">
+                {sharedBookmarks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-muted-foreground">
+                      You haven't shared any bookmarks yet. Make a bookmark public to see it here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
+                    {sharedBookmarks.map((bookmark) => (
+                      <BookmarkCard 
+                        key={bookmark.id} 
+                        bookmark={bookmark} 
+                        viewMode={viewMode} 
+                        onToggleFavorite={(id) => {
+                          if (favorites.includes(id)) {
+                            setFavorites(favorites.filter(favId => favId !== id))
+                          } else {
+                            setFavorites([...favorites, id])
+                          }
+                        }}
+                        isFavorite={favorites.includes(bookmark.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            </>
+          )}
         </Tabs>
       </div>
     </DashboardLayout>

@@ -11,6 +11,7 @@ export type Bookmark = {
   userId: string
   teamId?: string
   isPublic: boolean
+  category?: string
 }
 
 export type Team = {

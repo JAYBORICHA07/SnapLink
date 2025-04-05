@@ -2,15 +2,9 @@
 
 import type React from "react"
 
-import { createContext, useContext, useEffect, useState } from "react"
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  type User,
-} from "firebase/auth"
-import { auth } from "@/lib/firebase"
+import { createContext, useContext, useEffect } from "react"
+import { type User } from "firebase/auth"
+import { useUserStore } from "@/store"
 import { useRouter } from "next/navigation"
 
 type AuthContextType = {
@@ -32,22 +26,18 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext)
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user, loading, signIn, signUp, logout, initialize, isInitialized } = useUserStore()
   const router = useRouter()
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
-      setLoading(false)
-    })
+    if (!isInitialized) {
+      initialize()
+    }
+  }, [initialize, isInitialized])
 
-    return () => unsubscribe()
-  }, [])
-
-  const signIn = async (email: string, password: string) => {
+  const handleSignIn = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      await signIn(email, password)
       router.push("/dashboard")
     } catch (error) {
       console.error("Error signing in:", error)
@@ -55,9 +45,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
-  const signUp = async (email: string, password: string) => {
+  const handleSignUp = async (email: string, password: string) => {
     try {
-      await createUserWithEmailAndPassword(auth, email, password)
+      await signUp(email, password)
       router.push("/dashboard")
     } catch (error) {
       console.error("Error signing up:", error)
@@ -65,9 +55,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
-  const logout = async () => {
+  const handleLogout = async () => {
     try {
-      await signOut(auth)
+      await logout()
       router.push("/")
     } catch (error) {
       console.error("Error signing out:", error)
@@ -75,6 +65,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
-  return <AuthContext.Provider value={{ user, loading, signIn, signUp, logout }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        loading, 
+        signIn: handleSignIn, 
+        signUp: handleSignUp, 
+        logout: handleLogout
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  )
 }
 

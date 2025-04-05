@@ -15,8 +15,7 @@ import {
   Menu,
   X,
   Search,
-  Sparkles,
-  FolderPlus,
+  Loader2,
   User,
 } from "lucide-react"
 
@@ -33,16 +32,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useBookmarkStore, useTeamStore } from "@/store"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  
+  const { bookmarks, fetchBookmarks, loading: bookmarksLoading } = useBookmarkStore()
+  const { teams, fetchTeams, loading: teamsLoading } = useTeamStore()
 
   useEffect(() => {
     setMounted(true)
-  }, [])
+    
+    if (user) {
+      fetchBookmarks()
+      fetchTeams()
+    }
+  }, [user, fetchBookmarks, fetchTeams])
 
   if (!mounted) {
     return null
@@ -53,19 +61,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { name: "Teams", href: "/dashboard/teams", icon: Users },
     { name: "Settings", href: "/dashboard/settings", icon: Settings },
   ]
-
+  
+  // Predefined categories
   const categories = [
-    { name: "Personal", href: "/dashboard/category/personal", count: 12 },
-    { name: "Work", href: "/dashboard/category/work", count: 8 },
-    { name: "Learning", href: "/dashboard/category/learning", count: 5 },
-    { name: "Entertainment", href: "/dashboard/category/entertainment", count: 3 },
+    { name: "Personal", href: "/dashboard/category/personal", id: "personal" },
+    { name: "Work", href: "/dashboard/category/work", id: "work" },
+    { name: "Learning", href: "/dashboard/category/learning", id: "learning" },
+    { name: "Entertainment", href: "/dashboard/category/entertainment", id: "entertainment" },
   ]
-
-  const teams = [
-    { name: "Design Team", href: "/dashboard/teams/design", count: 7 },
-    { name: "Development", href: "/dashboard/teams/development", count: 15 },
-    { name: "Marketing", href: "/dashboard/teams/marketing", count: 4 },
-  ]
+  
+  // Count bookmarks in each predefined category
+  const categoryCounts = categories.reduce((acc, category) => {
+    acc[category.id] = bookmarks.filter(b => 
+      b.category === category.id
+    ).length;
+    return acc;
+  }, {} as Record<string, number>);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -110,43 +121,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="px-3 mt-6">
             <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Categories</h3>
             <div className="mt-2 space-y-1">
-              {categories.map((category) => (
-                <Link
-                  key={category.name}
-                  href={category.href}
-                  className={`
-                    group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
-                    ${pathname === category.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
-                  `}
-                >
-                  <span>{category.name}</span>
-                  <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
-                    {category.count}
-                  </span>
-                </Link>
-              ))}
-              <Button variant="ghost" size="sm" className="w-full justify-start mt-1">
-                <FolderPlus className="mr-2 h-4 w-4" />
-                Add Category
-              </Button>
+              {bookmarksLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                categories.map((category) => (
+                  <Link
+                    key={category.id}
+                    href={category.href}
+                    className={`
+                      group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
+                      ${pathname === category.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
+                    `}
+                  >
+                    <span>{category.name}</span>
+                    <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
+                      {categoryCounts[category.id] || 0}
+                    </span>
+                  </Link>
+                ))
+              )}
             </div>
           </div>
           <div className="px-3 mt-6">
             <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Teams</h3>
             <div className="mt-2 space-y-1">
-              {teams.map((team) => (
-                <Link
-                  key={team.name}
-                  href={team.href}
-                  className={`
-                    group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
-                    ${pathname === team.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
-                  `}
-                >
-                  <span>{team.name}</span>
-                  <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">{team.count}</span>
-                </Link>
-              ))}
+              {teamsLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : teams.length > 0 ? (
+                teams.map((team) => (
+                  <Link
+                    key={team.id}
+                    href={`/dashboard/teams/${team.id}`}
+                    className={`
+                      group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
+                      ${pathname === `/dashboard/teams/${team.id}` ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
+                    `}
+                  >
+                    <span>{team.name}</span>
+                    <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
+                      {team.members.length}
+                    </span>
+                  </Link>
+                ))
+              ) : (
+                <div className="px-2 py-2 text-sm text-muted-foreground">
+                  No teams yet
+                </div>
+              )}
             </div>
           </div>
           <div className="flex-shrink-0 flex border-t p-4 mt-6">
@@ -188,7 +213,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile menu */}
       <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
         <SheetTrigger asChild className="md:hidden">
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMobileMenuOpen(true)}>
+          <Button variant="ghost" size="icon" className="md:hidden absolute top-4 left-4 z-40">
             <Menu className="h-6 w-6" />
             <span className="sr-only">Open sidebar</span>
           </Button>
@@ -202,10 +227,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </Link>
               <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(false)}>
                 <X className="h-5 w-5" />
+                <span className="sr-only">Close</span>
               </Button>
             </div>
-            <div className="flex-1 overflow-y-auto py-4">
-              <div className="px-4 mb-6">
+            <div className="flex-1 overflow-auto py-2 px-2">
+              <div className="mb-4">
                 <Button asChild className="w-full justify-start gap-2" onClick={() => setIsMobileMenuOpen(false)}>
                   <Link href="/dashboard/add">
                     <PlusCircle className="h-4 w-4" />
@@ -213,22 +239,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </Link>
                 </Button>
               </div>
-              <div className="px-4 mb-6">
-                <div className="relative">
-                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Search bookmarks..." className="pl-8" />
-                </div>
-              </div>
-              <div className="space-y-1 px-2">
+              <nav className="space-y-1 px-2 mt-2">
                 {navigation.map((item) => (
                   <Link
                     key={item.name}
                     href={item.href}
                     className={`
                       group flex items-center px-2 py-2 text-sm font-medium rounded-md
-                      ${
-                        pathname === item.href ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"
-                      }
+                      ${pathname === item.href ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-muted"}
                     `}
                     onClick={() => setIsMobileMenuOpen(false)}
                   >
@@ -236,49 +254,63 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {item.name}
                   </Link>
                 ))}
-              </div>
-              <div className="px-3 mt-6">
-                <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Categories
-                </h3>
+              </nav>
+              <div className="mt-6 px-2">
+                <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Categories</h3>
                 <div className="mt-2 space-y-1">
-                  {categories.map((category) => (
-                    <Link
-                      key={category.name}
-                      href={category.href}
-                      className={`
-                        group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
-                        ${pathname === category.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
-                      `}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      <span>{category.name}</span>
-                      <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
-                        {category.count}
-                      </span>
-                    </Link>
-                  ))}
+                  {bookmarksLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    categories.map((category) => (
+                      <Link
+                        key={category.id}
+                        href={category.href}
+                        className={`
+                          group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
+                          ${pathname === category.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
+                        `}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <span>{category.name}</span>
+                        <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
+                          {categoryCounts[category.id] || 0}
+                        </span>
+                      </Link>
+                    ))
+                  )}
                 </div>
               </div>
-              <div className="px-3 mt-6">
+              <div className="mt-6 px-2">
                 <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Teams</h3>
                 <div className="mt-2 space-y-1">
-                  {teams.map((team) => (
-                    <Link
-                      key={team.name}
-                      href={team.href}
-                      className={`
-                        group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
-                        ${pathname === team.href ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
-                      `}
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      <span>{team.name}</span>
-                      <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
-                        {team.count}
-                      </span>
-                    </Link>
-                  ))}
+                  {teamsLoading ? (
+                    <div className="flex items-center justify-center py-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : teams.length > 0 ? (
+                    teams.map((team) => (
+                      <Link
+                        key={team.id}
+                        href={`/dashboard/teams/${team.id}`}
+                        className={`
+                          group flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md
+                          ${pathname === `/dashboard/teams/${team.id}` ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"}
+                        `}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <span>{team.name}</span>
+                        <span className="bg-muted text-muted-foreground text-xs py-0.5 px-2 rounded-full">
+                          {team.members.length}
+                        </span>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="px-2 py-2 text-sm text-muted-foreground">
+                      No teams yet
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -289,20 +321,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </div>
                 <div className="ml-3">
                   <p className="text-sm font-medium">{user?.email?.split("@")[0] || "User"}</p>
-                  <p className="text-xs text-muted-foreground truncate max-w-[140px]">
+                  <p className="text-xs text-muted-foreground truncate max-w-[180px]">
                     {user?.email || "user@example.com"}
                   </p>
                 </div>
               </div>
-              <div className="mt-4 flex flex-col space-y-2">
-                <Button variant="outline" asChild onClick={() => setIsMobileMenuOpen(false)}>
-                  <Link href="/dashboard/settings" className="justify-start">
-                    <Settings className="mr-2 h-4 w-4" />
+              <div className="mt-3 space-y-1">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start"
+                  asChild
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Link href="/dashboard/settings">
+                    <Settings className="mr-3 h-4 w-4" />
                     Settings
                   </Link>
                 </Button>
-                <Button variant="outline" className="justify-start" onClick={() => logout()}>
-                  <LogOut className="mr-2 h-4 w-4" />
+                <Button variant="ghost" className="w-full justify-start" onClick={() => logout()}>
+                  <LogOut className="mr-3 h-4 w-4" />
                   Log out
                 </Button>
               </div>
@@ -313,27 +350,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Main content */}
       <div className="md:pl-64 flex flex-col flex-1">
-        <div className="sticky top-0 z-10 flex-shrink-0 flex h-16 bg-card border-b">
-          <div className="flex-1 px-4 flex justify-between">
-             <div className="flex-1 flex items-center">
-              <div className="md:hidden ml-3 flex items-center">
-                <BookmarkIcon className="h-6 w-6 text-primary" />
-                <span className="text-xl font-bold ml-2">SnapLink</span>
+        <div className="flex-1">
+          <div className="py-6">
+            <div className="flex items-center px-4 md:hidden mb-4">
+              <Button variant="ghost" size="icon" onClick={() => setIsMobileMenuOpen(true)}>
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Open sidebar</span>
+              </Button>
+              <div className="ml-3 flex-1 flex justify-between items-center">
+                <Link href="/dashboard" className="flex items-center gap-2">
+                  <BookmarkIcon className="h-6 w-6 text-primary" />
+                  <span className="text-xl font-bold">SnapLink</span>
+                </Link>
+                <ModeToggle />
               </div>
             </div>
-            <div className="ml-4 flex items-center md:ml-6 gap-2">
-              <Button variant="outline" size="sm" className="hidden md:flex gap-1">
-                <Sparkles className="h-4 w-4" />
-                AI Assistant
-              </Button>
+            <div className="hidden md:flex md:justify-end md:px-8 mb-6">
               <ModeToggle />
-            </div> 
+            </div>
+            <main>{children}</main>
           </div>
         </div>
-
-        <main className="flex-1">
-          <div className="py-6">{children}</div>
-        </main>
       </div>
     </div>
   )
